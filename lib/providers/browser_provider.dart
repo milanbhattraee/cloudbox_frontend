@@ -1,0 +1,186 @@
+import 'package:flutter/foundation.dart';
+
+import '../core/config/app_config.dart';
+import '../core/network/api_exception.dart';
+import '../models/cloud_file.dart';
+import '../models/cloud_folder.dart';
+import '../models/file_category.dart';
+import '../services/file_service.dart';
+import '../services/folder_service.dart';
+
+/// One entry in the breadcrumb trail. The root of the trail (index -1, not
+/// stored) is implicitly "My Files" / folderId == null.
+class _BreadcrumbEntry {
+  final String id;
+  final String name;
+  _BreadcrumbEntry(this.id, this.name);
+}
+
+class BrowserProvider extends ChangeNotifier {
+  BrowserProvider({FolderService? folderService, FileService? fileService})
+      : _folderService = folderService ?? FolderService(),
+        _fileService = fileService ?? FileService();
+
+  final FolderService _folderService;
+  final FileService _fileService;
+
+  final List<_BreadcrumbEntry> _trail = [];
+
+  List<CloudFolder> folders = [];
+  List<CloudFile> files = [];
+  int _page = 1;
+  int _totalPages = 1;
+
+  bool isLoading = false;
+  bool isLoadingMore = false;
+  String? errorMessage;
+
+  String? searchQuery;
+  FileCategory? categoryFilter;
+
+  /// null means "My Files" (root).
+  String? get currentFolderId => _trail.isEmpty ? null : _trail.last.id;
+  String get currentFolderName => _trail.isEmpty ? 'My Files' : _trail.last.name;
+  List<String> get breadcrumbNames => ['My Files', ..._trail.map((e) => e.name)];
+  bool get isAtRoot => _trail.isEmpty;
+  bool get hasMoreFiles => _page < _totalPages;
+  bool get hasActiveFilters => (searchQuery?.isNotEmpty ?? false) || categoryFilter != null;
+
+  Future<void> init() => refresh();
+
+  Future<void> refresh() async {
+    isLoading = true;
+    errorMessage = null;
+    notifyListeners();
+    try {
+      final foldersFuture = _folderService.listFolders(parentFolderId: currentFolderId);
+      final filesFuture = _fileService.listFiles(
+        folderId: currentFolderId,
+        search: searchQuery,
+        category: categoryFilter?.apiValue,
+        page: 1,
+        limit: AppConfig.defaultPageSize,
+      );
+      folders = await foldersFuture;
+      final paginated = await filesFuture;
+      files = paginated.items;
+      _page = paginated.meta.page;
+      _totalPages = paginated.meta.totalPages;
+    } catch (e) {
+      errorMessage = e is ApiException ? e.displayMessage : e.toString();
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> loadMoreFiles() async {
+    if (!hasMoreFiles || isLoadingMore) return;
+    isLoadingMore = true;
+    notifyListeners();
+    try {
+      final paginated = await _fileService.listFiles(
+        folderId: currentFolderId,
+        search: searchQuery,
+        category: categoryFilter?.apiValue,
+        page: _page + 1,
+        limit: AppConfig.defaultPageSize,
+      );
+      files = [...files, ...paginated.items];
+      _page = paginated.meta.page;
+      _totalPages = paginated.meta.totalPages;
+    } catch (e) {
+      errorMessage = e is ApiException ? e.displayMessage : e.toString();
+    } finally {
+      isLoadingMore = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> openFolder(CloudFolder folder) async {
+    _trail.add(_BreadcrumbEntry(folder.id, folder.name));
+    await refresh();
+  }
+
+  Future<void> goToBreadcrumb(int index) async {
+    // index 0 == "My Files" (root); index i>0 == _trail[i-1]
+    if (index <= 0) {
+      _trail.clear();
+    } else {
+      _trail.removeRange(index, _trail.length);
+    }
+    await refresh();
+  }
+
+  Future<void> goUp() async {
+    if (_trail.isNotEmpty) _trail.removeLast();
+    await refresh();
+  }
+
+  Future<void> setSearch(String? query) async {
+    searchQuery = query;
+    await refresh();
+  }
+
+  Future<void> setCategoryFilter(FileCategory? category) async {
+    categoryFilter = category;
+    await refresh();
+  }
+
+  Future<void> clearFilters() async {
+    searchQuery = null;
+    categoryFilter = null;
+    await refresh();
+  }
+
+  // ---- Folder mutations ----
+
+  Future<bool> createFolder(String name) => _runMutation(() async {
+        await _folderService.createFolder(name: name, parentFolderId: currentFolderId);
+        await refresh();
+      });
+
+  Future<bool> renameFolder(CloudFolder folder, String newName) => _runMutation(() async {
+        await _folderService.renameFolder(folder.id, newName);
+        await refresh();
+      });
+
+  Future<bool> moveFolder(CloudFolder folder, String? destinationFolderId) => _runMutation(() async {
+        await _folderService.moveFolder(folder.id, parentFolderId: destinationFolderId);
+        await refresh();
+      });
+
+  Future<bool> deleteFolder(CloudFolder folder) => _runMutation(() async {
+        await _folderService.deleteFolder(folder.id);
+        await refresh();
+      });
+
+  // ---- File mutations ----
+
+  Future<bool> renameFile(CloudFile file, String newName) => _runMutation(() async {
+        await _fileService.renameFile(file.id, newName);
+        await refresh();
+      });
+
+  Future<bool> moveFile(CloudFile file, String? destinationFolderId) => _runMutation(() async {
+        await _fileService.moveFile(file.id, folderId: destinationFolderId);
+        await refresh();
+      });
+
+  Future<bool> deleteFile(CloudFile file) => _runMutation(() async {
+        await _fileService.deleteFile(file.id);
+        await refresh();
+      });
+
+  Future<bool> _runMutation(Future<void> Function() action) async {
+    errorMessage = null;
+    try {
+      await action();
+      return true;
+    } catch (e) {
+      errorMessage = e is ApiException ? e.displayMessage : e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+}

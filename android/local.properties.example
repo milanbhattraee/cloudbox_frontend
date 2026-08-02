@@ -1,0 +1,7 @@
+# Copy this file to android/local.properties (no .example suffix) and fill
+# in the paths for your machine. Android Studio normally generates this
+# file for you automatically the first time you open the project.
+sdk.dir=/path/to/Android/sdk
+flutter.sdk=/path/to/flutter
+flutter.versionName=1.0.0
+flutter.versionCode=1
