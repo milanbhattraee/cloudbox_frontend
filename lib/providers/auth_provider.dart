@@ -16,6 +16,7 @@ class AuthProvider extends ChangeNotifier {
 
   final AuthService _authService;
   late final StreamSubscription _authSub;
+  int _authStateVersion = 0;
 
   AuthStatus status = AuthStatus.unknown;
   AppUser? currentUser;
@@ -25,24 +26,37 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
   Future<void> _onFirebaseUserChanged(dynamic user) async {
+    final version = ++_authStateVersion;
+
     if (user == null) {
       currentUser = null;
       status = AuthStatus.unauthenticated;
+      errorMessage = null;
       notifyListeners();
       return;
     }
     // A Firebase user exists locally; sync/create the matching backend
     // User row and pull their profile (storage quota, etc.) before we
     // consider the session fully "authenticated".
+    status = AuthStatus.unknown;
+    errorMessage = null;
+    notifyListeners();
+
     try {
       final synced = await _authService.syncWithBackend();
+      if (version != _authStateVersion) return;
       currentUser = synced;
       status = AuthStatus.authenticated;
     } catch (e) {
+      if (version != _authStateVersion) return;
+      currentUser = null;
       errorMessage = (e is ApiException ? e.displayMessage : e.toString());
       status = AuthStatus.unauthenticated;
     }
-    notifyListeners();
+
+    if (version == _authStateVersion) {
+      notifyListeners();
+    }
   }
 
   Future<bool> signIn({required String email, required String password}) async {

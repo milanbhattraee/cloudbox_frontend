@@ -40,20 +40,39 @@ class BrowserProvider extends ChangeNotifier {
 
   /// null means "My Files" (root).
   String? get currentFolderId => _trail.isEmpty ? null : _trail.last.id;
-  String get currentFolderName => _trail.isEmpty ? 'My Files' : _trail.last.name;
-  List<String> get breadcrumbNames => ['My Files', ..._trail.map((e) => e.name)];
+  String get currentFolderName =>
+      _trail.isEmpty ? 'My Files' : _trail.last.name;
+  List<String> get breadcrumbNames =>
+      ['My Files', ..._trail.map((e) => e.name)];
   bool get isAtRoot => _trail.isEmpty;
   bool get hasMoreFiles => _page < _totalPages;
-  bool get hasActiveFilters => (searchQuery?.isNotEmpty ?? false) || categoryFilter != null;
+  bool get hasActiveFilters =>
+      (searchQuery?.isNotEmpty ?? false) || categoryFilter != null;
 
   Future<void> init() => refresh();
+
+  Future<void> startFreshSession() async {
+    _trail.clear();
+    folders = [];
+    files = [];
+    _page = 1;
+    _totalPages = 1;
+    searchQuery = null;
+    categoryFilter = null;
+    errorMessage = null;
+    isLoading = false;
+    isLoadingMore = false;
+    notifyListeners();
+    await refresh();
+  }
 
   Future<void> refresh() async {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
     try {
-      final foldersFuture = _folderService.listFolders(parentFolderId: currentFolderId);
+      final foldersFuture =
+          _folderService.listFolders(parentFolderId: currentFolderId);
       final filesFuture = _fileService.listFiles(
         folderId: currentFolderId,
         search: searchQuery,
@@ -136,17 +155,21 @@ class BrowserProvider extends ChangeNotifier {
   // ---- Folder mutations ----
 
   Future<bool> createFolder(String name) => _runMutation(() async {
-        await _folderService.createFolder(name: name, parentFolderId: currentFolderId);
+        await _folderService.createFolder(
+            name: name, parentFolderId: currentFolderId);
         await refresh();
       });
 
-  Future<bool> renameFolder(CloudFolder folder, String newName) => _runMutation(() async {
+  Future<bool> renameFolder(CloudFolder folder, String newName) =>
+      _runMutation(() async {
         await _folderService.renameFolder(folder.id, newName);
         await refresh();
       });
 
-  Future<bool> moveFolder(CloudFolder folder, String? destinationFolderId) => _runMutation(() async {
-        await _folderService.moveFolder(folder.id, parentFolderId: destinationFolderId);
+  Future<bool> moveFolder(CloudFolder folder, String? destinationFolderId) =>
+      _runMutation(() async {
+        await _folderService.moveFolder(folder.id,
+            parentFolderId: destinationFolderId);
         await refresh();
       });
 
@@ -157,12 +180,14 @@ class BrowserProvider extends ChangeNotifier {
 
   // ---- File mutations ----
 
-  Future<bool> renameFile(CloudFile file, String newName) => _runMutation(() async {
+  Future<bool> renameFile(CloudFile file, String newName) =>
+      _runMutation(() async {
         await _fileService.renameFile(file.id, newName);
         await refresh();
       });
 
-  Future<bool> moveFile(CloudFile file, String? destinationFolderId) => _runMutation(() async {
+  Future<bool> moveFile(CloudFile file, String? destinationFolderId) =>
+      _runMutation(() async {
         await _fileService.moveFile(file.id, folderId: destinationFolderId);
         await refresh();
       });

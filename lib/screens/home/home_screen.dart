@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -37,14 +39,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BrowserProvider>().init();
-    });
+    unawaited(context.read<BrowserProvider>().startFreshSession());
     _scrollController.addListener(_onScroll);
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels > _scrollController.position.maxScrollExtent - 300) {
+    if (_scrollController.position.pixels >
+        _scrollController.position.maxScrollExtent - 300) {
       context.read<BrowserProvider>().loadMoreFiles();
     }
   }
@@ -100,7 +101,8 @@ class _HomeScreenState extends State<HomeScreen> {
               : Text(browser.currentFolderName),
           actions: [
             IconButton(
-              icon: Icon(_isSearching ? Icons.close_rounded : Icons.search_rounded),
+              icon: Icon(
+                  _isSearching ? Icons.close_rounded : Icons.search_rounded),
               onPressed: () {
                 setState(() => _isSearching = !_isSearching);
                 if (!_isSearching) {
@@ -159,8 +161,10 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         body: Column(
           children: [
-            if (auth.currentUser != null) StorageUsageBar(user: auth.currentUser!),
-            if (!browser.isAtRoot || browser.breadcrumbNames.length > 1) _buildBreadcrumbs(browser),
+            if (auth.currentUser != null)
+              StorageUsageBar(user: auth.currentUser!),
+            if (!browser.isAtRoot || browser.breadcrumbNames.length > 1)
+              _buildBreadcrumbs(browser),
             const SizedBox(height: 4),
             CategoryFilterRow(
               selected: browser.categoryFilter,
@@ -217,13 +221,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (browser.isLoading && browser.folders.isEmpty && browser.files.isEmpty) {
       return const LoadingView();
     }
-    if (browser.errorMessage != null && browser.folders.isEmpty && browser.files.isEmpty) {
-      return ErrorState(message: browser.errorMessage!, onRetry: browser.refresh);
+    if (browser.errorMessage != null &&
+        browser.folders.isEmpty &&
+        browser.files.isEmpty) {
+      return ErrorState(
+          message: browser.errorMessage!, onRetry: browser.refresh);
     }
     if (browser.folders.isEmpty && browser.files.isEmpty) {
       return EmptyState(
-        icon: browser.hasActiveFilters ? Icons.search_off_rounded : Icons.cloud_outlined,
-        title: browser.hasActiveFilters ? 'No matching files' : 'Nothing here yet',
+        icon: browser.hasActiveFilters
+            ? Icons.search_off_rounded
+            : Icons.cloud_outlined,
+        title:
+            browser.hasActiveFilters ? 'No matching files' : 'Nothing here yet',
         message: browser.hasActiveFilters
             ? 'Try a different search or filter.'
             : 'Tap "Add" to upload a file or create a folder.',
@@ -239,7 +249,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: Text('Folders', style: TextStyle(fontWeight: FontWeight.w600)),
+                child: Text('Folders',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
               ),
             ),
             SliverToBoxAdapter(
@@ -255,7 +266,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     return FolderTile(
                       folder: folder,
                       onTap: () => browser.openFolder(folder),
-                      onMenuTap: () => _showFolderActions(context, browser, folder),
+                      onMenuTap: () =>
+                          _showFolderActions(context, browser, folder),
                     );
                   },
                 ),
@@ -266,7 +278,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-                child: Text('Files', style: TextStyle(fontWeight: FontWeight.w600)),
+                child: Text('Files',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
               ),
             ),
             SliverList.builder(
@@ -282,7 +295,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 return FileTile(
                   file: file,
                   onTap: () => _onFileTap(context, file),
-                  onAction: (action) => _onFileAction(context, browser, file, action),
+                  onAction: (action) =>
+                      _onFileAction(context, browser, file, action),
                 );
               },
             ),
@@ -295,7 +309,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---- Folder actions ----
 
-  void _showFolderActions(BuildContext context, BrowserProvider browser, CloudFolder folder) {
+  void _showFolderActions(
+      BuildContext context, BrowserProvider browser, CloudFolder folder) {
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
@@ -311,11 +326,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   context,
                   title: 'Rename folder',
                   initialValue: folder.name,
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Name is required'
+                      : null,
                 );
                 if (newName != null && newName.isNotEmpty && context.mounted) {
                   final ok = await browser.renameFolder(folder, newName);
-                  if (!ok && context.mounted) _showError(context, browser.errorMessage);
+                  if (!ok && context.mounted)
+                    _showError(context, browser.errorMessage);
                 }
               },
             ),
@@ -326,19 +344,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 Navigator.pop(sheetContext);
                 final destination = await Navigator.of(context).push<String?>(
                   MaterialPageRoute(
-                    builder: (_) => FolderPickerScreen(excludeFolderId: folder.id),
+                    builder: (_) =>
+                        FolderPickerScreen(excludeFolderId: folder.id),
                   ),
                 );
                 if (destination != null && context.mounted) {
-                  final ok =
-                      await browser.moveFolder(folder, destination == 'root' ? null : destination);
-                  if (!ok && context.mounted) _showError(context, browser.errorMessage);
+                  final ok = await browser.moveFolder(
+                      folder, destination == 'root' ? null : destination);
+                  if (!ok && context.mounted)
+                    _showError(context, browser.errorMessage);
                 }
               },
             ),
             ListTile(
-              leading: Icon(Icons.delete_outline_rounded, color: Theme.of(context).colorScheme.error),
-              title: Text('Delete', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              leading: Icon(Icons.delete_outline_rounded,
+                  color: Theme.of(context).colorScheme.error),
+              title: Text('Delete',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
               onTap: () async {
                 Navigator.pop(sheetContext);
                 final confirmed = await showConfirmDialog(
@@ -353,7 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (confirmed && context.mounted) {
                   final ok = await browser.deleteFolder(folder);
-                  if (!ok && context.mounted) _showError(context, browser.errorMessage);
+                  if (!ok && context.mounted)
+                    _showError(context, browser.errorMessage);
                 }
               },
             ),
@@ -393,7 +416,8 @@ class _HomeScreenState extends State<HomeScreen> {
           context,
           title: 'Rename file',
           initialValue: file.originalName,
-          validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Name is required' : null,
         );
         if (newName != null && newName.isNotEmpty && context.mounted) {
           final ok = await browser.renameFile(file, newName);
@@ -405,7 +429,8 @@ class _HomeScreenState extends State<HomeScreen> {
           MaterialPageRoute(builder: (_) => const FolderPickerScreen()),
         );
         if (destination != null && context.mounted) {
-          final ok = await browser.moveFile(file, destination == 'root' ? null : destination);
+          final ok = await browser.moveFile(
+              file, destination == 'root' ? null : destination);
           if (!ok && context.mounted) _showError(context, browser.errorMessage);
         }
         break;
@@ -468,11 +493,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'New folder',
                   confirmLabel: 'Create',
                   hintText: 'Folder name',
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Name is required'
+                      : null,
                 );
                 if (name != null && name.isNotEmpty && context.mounted) {
                   final ok = await browser.createFolder(name);
-                  if (!ok && context.mounted) _showError(context, browser.errorMessage);
+                  if (!ok && context.mounted)
+                    _showError(context, browser.errorMessage);
                 }
               },
             ),
@@ -488,7 +516,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (uploaded != null && context.mounted) {
                   browser.refresh();
                   context.read<AuthProvider>().refreshProfile();
-                } else if (uploadProvider.errorMessage != null && context.mounted) {
+                } else if (uploadProvider.errorMessage != null &&
+                    context.mounted) {
                   _showError(context, uploadProvider.errorMessage);
                 }
               },

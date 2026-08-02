@@ -86,6 +86,12 @@ class AuthService {
   /// other endpoint requires the local User row to already exist.
   Future<AppUser> syncWithBackend() async {
     try {
+      final user = _firebaseAuth.currentUser;
+      if (user == null) {
+        throw ApiException(message: 'No authenticated Firebase user found.');
+      }
+
+      await user.getIdToken(true);
       final response = await ApiClient.instance.dio.post('/auth/login');
       final data = response.data['data']['user'] as Map<String, dynamic>;
       return AppUser.fromJson(data);

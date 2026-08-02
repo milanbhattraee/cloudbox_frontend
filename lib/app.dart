@@ -34,30 +34,12 @@ class CloudBoxApp extends StatelessWidget {
 }
 
 /// Swaps between splash / login / home based on [AuthProvider.status].
-/// Also resets the browser to the root folder whenever a new session
-/// starts, so a freshly-signed-in user never sees a stale browse state
-/// left over from a previous account.
-class _AuthGate extends StatefulWidget {
+class _AuthGate extends StatelessWidget {
   const _AuthGate();
-
-  @override
-  State<_AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends State<_AuthGate> {
-  AuthStatus? _lastStatus;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-
-    if (auth.status == AuthStatus.authenticated && _lastStatus != AuthStatus.authenticated) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        context.read<BrowserProvider>().init();
-      });
-    }
-    _lastStatus = auth.status;
 
     switch (auth.status) {
       case AuthStatus.unknown:

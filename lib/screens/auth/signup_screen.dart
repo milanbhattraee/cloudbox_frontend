@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../../core/utils/validators.dart';
 import '../../providers/auth_provider.dart';
-import '../home/home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -42,11 +41,6 @@ class _SignupScreenState extends State<SignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(auth.errorMessage ?? 'Sign up failed')),
       );
-      return;
-    }
-
-    if (mounted) {
-      await _navigateToHomeWhenReady(auth);
     }
   }
 
@@ -57,24 +51,7 @@ class _SignupScreenState extends State<SignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(auth.errorMessage ?? 'Google sign-up failed')),
       );
-      return;
     }
-
-    if (mounted) {
-      await _navigateToHomeWhenReady(auth);
-    }
-  }
-
-  Future<void> _navigateToHomeWhenReady(AuthProvider auth) async {
-    for (var i = 0; i < 20 && mounted && !auth.isAuthenticated; i++) {
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    if (!mounted || !auth.isAuthenticated) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-      (route) => false,
-    );
   }
 
   @override
