@@ -118,6 +118,7 @@ class BrowserProvider extends ChangeNotifier {
 
   Future<void> openFolder(CloudFolder folder) async {
     _trail.add(_BreadcrumbEntry(folder.id, folder.name));
+    notifyListeners(); // Immediate UI update
     await refresh();
   }
 
@@ -128,27 +129,47 @@ class BrowserProvider extends ChangeNotifier {
     } else {
       _trail.removeRange(index, _trail.length);
     }
+    notifyListeners(); // Immediate UI update
     await refresh();
   }
 
   Future<void> goUp() async {
-    if (_trail.isNotEmpty) _trail.removeLast();
-    await refresh();
+    if (_trail.isNotEmpty) {
+      _trail.removeLast();
+      notifyListeners(); // Immediate UI update
+      await refresh();
+    }
+  }
+
+  /// Navigate to root folder
+  Future<void> goToRoot() async {
+    if (_trail.isNotEmpty) {
+      _trail.clear();
+      notifyListeners();
+      await refresh();
+    }
   }
 
   Future<void> setSearch(String? query) async {
-    searchQuery = query;
+    final trimmedQuery = query?.trim();
+    if (searchQuery == trimmedQuery) return; // No change
+    searchQuery = trimmedQuery?.isEmpty ?? true ? null : trimmedQuery;
+    notifyListeners();
     await refresh();
   }
 
   Future<void> setCategoryFilter(FileCategory? category) async {
+    if (categoryFilter == category) return; // No change
     categoryFilter = category;
+    notifyListeners();
     await refresh();
   }
 
   Future<void> clearFilters() async {
+    if (searchQuery == null && categoryFilter == null) return;
     searchQuery = null;
     categoryFilter = null;
+    notifyListeners();
     await refresh();
   }
 

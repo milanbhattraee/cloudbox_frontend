@@ -81,22 +81,47 @@ class ApiClient {
     if (error is ApiException) return error;
     if (error is DioException) {
       if (error.response != null) {
+        // Server responded with an error status code
         return ApiException.fromResponseData(
           error.response!.data,
           statusCode: error.response!.statusCode,
         );
       }
+      // No response received - connection issue
       switch (error.type) {
         case DioExceptionType.connectionTimeout:
         case DioExceptionType.sendTimeout:
         case DioExceptionType.receiveTimeout:
-          return ApiException(message: 'Connection timed out. Please try again.');
+          return ApiException(
+            message: 'Connection timed out. The server may be busy or down.',
+            code: 'TIMEOUT',
+          );
         case DioExceptionType.connectionError:
-          return ApiException(message: 'Could not reach the server. Check your connection.');
+          return ApiException(
+            message: 'Could not reach the server. Please check your internet connection.',
+            code: 'CONNECTION_ERROR',
+          );
         case DioExceptionType.cancel:
-          return ApiException(message: 'Request cancelled.');
+          return ApiException(
+            message: 'Request cancelled.',
+            code: 'CANCELLED',
+          );
+        case DioExceptionType.badCertificate:
+          return ApiException(
+            message: 'Security certificate error. Cannot connect securely.',
+            code: 'BAD_CERTIFICATE',
+          );
+        case DioExceptionType.badResponse:
+          return ApiException(
+            message: 'Server returned an invalid response.',
+            code: 'BAD_RESPONSE',
+          );
+        case DioExceptionType.unknown:
         default:
-          return ApiException(message: error.message ?? 'Network error.');
+          return ApiException(
+            message: error.message ?? 'Network error occurred.',
+            code: 'UNKNOWN',
+          );
       }
     }
     return ApiException(message: error.toString());

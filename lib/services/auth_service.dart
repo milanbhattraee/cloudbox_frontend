@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -16,9 +17,18 @@ class AuthService {
     required String password,
     String? displayName,
   }) async {
+    // Additional validation
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty) {
+      throw ApiException(message: 'Email is required');
+    }
+    if (password.length < 6) {
+      throw ApiException(message: 'Password must be at least 6 characters');
+    }
+
     try {
       final credential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: email.trim(),
+        email: trimmedEmail,
         password: password,
       );
       if (displayName != null && displayName.trim().isNotEmpty) {
@@ -32,17 +42,31 @@ class AuthService {
 
   Future<void> signInWithEmail(
       {required String email, required String password}) async {
+    // Validation
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty) {
+      throw ApiException(message: 'Email is required');
+    }
+    if (password.isEmpty) {
+      throw ApiException(message: 'Password is required');
+    }
+
     try {
       await _firebaseAuth.signInWithEmailAndPassword(
-          email: email.trim(), password: password);
+          email: trimmedEmail, password: password);
     } on FirebaseAuthException catch (e) {
       throw _mapFirebaseError(e);
     }
   }
 
   Future<void> sendPasswordReset(String email) async {
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty) {
+      throw ApiException(message: 'Email is required');
+    }
+
     try {
-      await _firebaseAuth.sendPasswordResetEmail(email: email.trim());
+      await _firebaseAuth.sendPasswordResetEmail(email: trimmedEmail);
     } on FirebaseAuthException catch (e) {
       throw _mapFirebaseError(e);
     }
@@ -50,13 +74,31 @@ class AuthService {
 
   Future<void> signInWithGoogle() async {
     try {
-      final googleSignIn = GoogleSignIn();
+      // Configure GoogleSignIn with proper scopes
+      final googleSignIn = GoogleSignIn(
+        scopes: [
+          'email',
+          'profile',
+        ],
+      );
+
+      // Sign out first to ensure account picker shows
+      await googleSignIn.signOut();
+      
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
         throw ApiException(message: 'Google sign-in cancelled.');
       }
 
       final googleAuth = await googleUser.authentication;
+      
+      // Verify we have the required tokens
+      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
+        throw ApiException(
+          message: 'Failed to get authentication tokens from Google.',
+        );
+      }
+
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
@@ -67,16 +109,27 @@ class AuthService {
       throw _mapFirebaseError(e);
     } on ApiException {
       rethrow;
-    } catch (_) {
-      throw ApiException(message: 'Google sign-in failed. Please try again.');
+    } catch (e) {
+      throw ApiException(
+        message: 'Google sign-in failed: ${e.toString()}',
+      );
     }
   }
 
   Future<void> registerWithGoogle() async {
+    // For Google auth, register and sign-in are the same flow
+    // Firebase automatically creates a new user on first sign-in
     await signInWithGoogle();
   }
 
   Future<void> signOut() async {
+    // Sign out from both Firebase and Google
+    try {
+      final googleSignIn = GoogleSignIn();
+      await googleSignIn.signOut();
+    } catch (_) {
+      // Ignore Google sign-out errors as user might not have signed in with Google
+    }
     await _firebaseAuth.signOut();
   }
 
@@ -91,8 +144,23 @@ class AuthService {
         throw ApiException(message: 'No authenticated Firebase user found.');
       }
 
+      // Force token refresh to ensure it's valid
       await user.getIdToken(true);
-      final response = await ApiClient.instance.dio.post('/auth/login');
+      
+      final response = await ApiClient.instance.dio.post(
+        '/auth/login',
+        options: Options(
+          sendTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 15),
+        ),
+      );
+      
+      if (response.data?['data']?['user'] == null) {
+        throw ApiException(
+          message: 'Invalid server response during login sync',
+        );
+      }
+      
       final data = response.data['data']['user'] as Map<String, dynamic>;
       return AppUser.fromJson(data);
     } catch (e) {
@@ -104,6 +172,11 @@ class AuthService {
   Future<AppUser> fetchProfile() async {
     try {
       final response = await ApiClient.instance.dio.get('/auth/profile');
+      
+      if (response.data?['data']?['user'] == null) {
+        throw ApiException(message: 'Invalid profile response from server');
+      }
+      
       final data = response.data['data']['user'] as Map<String, dynamic>;
       return AppUser.fromJson(data);
     } catch (e) {

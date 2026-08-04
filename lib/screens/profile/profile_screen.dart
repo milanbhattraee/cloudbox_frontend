@@ -85,10 +85,13 @@ class ProfileScreen extends StatelessWidget {
                         message: 'You can sign back in any time.',
                         confirmLabel: 'Sign out',
                       );
-                      if (confirmed) {
-                        await context.read<AuthProvider>().signOut();
-                        if (context.mounted) Navigator.of(context).popUntil((r) => r.isFirst);
-                      }
+                      if (!confirmed) return;
+                      if (!context.mounted) return;
+                      
+                      await context.read<AuthProvider>().signOut();
+                      if (!context.mounted) return;
+                      
+                      Navigator.of(context).popUntil((r) => r.isFirst);
                     },
                     icon: const Icon(Icons.logout_rounded),
                     label: const Text('Sign out'),

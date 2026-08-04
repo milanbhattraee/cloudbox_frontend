@@ -1,9 +1,13 @@
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/network/api_client.dart';
 import '../models/cloud_file.dart';
 import '../models/paginated_files.dart';
+
+// Re-export PlatformFile for convenience
+export 'package:file_picker/file_picker.dart' show PlatformFile;
 
 class FileService {
   final _dio = ApiClient.instance.dio;
@@ -17,27 +21,81 @@ class FileService {
     String? folderId,
     void Function(int sent, int total)? onProgress,
   }) async {
-    try {
-      final formData = FormData();
-      if (folderId != null) {
-        formData.fields.add(MapEntry('folderId', folderId));
-      }
-      for (final f in files) {
-        final bytes = f.bytes;
-        if (bytes == null) continue;
-        formData.files.add(
-          MapEntry('files', MultipartFile.fromBytes(bytes, filename: f.name)),
+    // Validation
+    if (files.isEmpty) {
+      throw ApiClient.toApiException(
+        Exception('No files selected for upload'),
+      );
+    }
+
+    // Validate file sizes
+    const maxFileSize = 100 * 1024 * 1024; // 100MB
+    for (final file in files) {
+      if (file.size > maxFileSize) {
+        throw ApiClient.toApiException(
+          Exception('File "${file.name}" exceeds maximum size of 100MB'),
         );
       }
+      if (file.size == 0) {
+        throw ApiClient.toApiException(
+          Exception('File "${file.name}" is empty'),
+        );
+      }
+    }
+
+    try {
+      final formData = FormData();
+      if (folderId != null && folderId.isNotEmpty) {
+        formData.fields.add(MapEntry('folderId', folderId));
+      }
+      
+      int totalFilesAdded = 0;
+      for (final f in files) {
+        final bytes = f.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          debugPrint('[FileService] Skipping ${f.name} - no bytes available');
+          continue;
+        }
+        formData.files.add(
+          MapEntry(
+            'files',
+            MultipartFile.fromBytes(bytes, filename: f.name),
+          ),
+        );
+        totalFilesAdded++;
+      }
+
+      if (totalFilesAdded == 0) {
+        throw ApiClient.toApiException(
+          Exception('No valid files to upload'),
+        );
+      }
+
+      debugPrint('[FileService] Uploading $totalFilesAdded file(s)...');
 
       final response = await _dio.post(
         '/files/upload',
         data: formData,
         onSendProgress: onProgress,
+        options: Options(
+          sendTimeout: const Duration(minutes: 5), // Allow time for large files
+        ),
       );
+      
+      if (response.data?['data']?['files'] == null) {
+        throw ApiClient.toApiException(
+          Exception('Invalid server response: missing files data'),
+        );
+      }
+
       final list = response.data['data']['files'] as List<dynamic>;
-      return list.map((e) => CloudFile.fromJson(e as Map<String, dynamic>)).toList();
+      debugPrint('[FileService] Successfully uploaded ${list.length} file(s)');
+      
+      return list
+          .map((e) => CloudFile.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (e) {
+      debugPrint('[FileService] Upload error: $e');
       throw ApiClient.toApiException(e);
     }
   }
@@ -97,24 +155,52 @@ class FileService {
   }
 
   Future<CloudFile> renameFile(String id, String originalName) async {
+    // Validation
+    if (id.trim().isEmpty) {
+      throw ApiClient.toApiException(Exception('File ID is required'));
+    }
+    if (originalName.trim().isEmpty) {
+      throw ApiClient.toApiException(Exception('File name cannot be empty'));
+    }
+    if (originalName.length > 255) {
+      throw ApiClient.toApiException(
+        Exception('File name is too long (max 255 characters)'),
+      );
+    }
+
     try {
-      final response = await _dio.put('/files/$id', data: {'originalName': originalName});
-      return CloudFile.fromJson(response.data['data']['file'] as Map<String, dynamic>);
+      final response = await _dio.put(
+        '/files/$id',
+        data: {'originalName': originalName.trim()},
+      );
+      return CloudFile.fromJson(
+          response.data['data']['file'] as Map<String, dynamic>);
     } catch (e) {
       throw ApiClient.toApiException(e);
     }
   }
 
   Future<CloudFile> moveFile(String id, {String? folderId}) async {
+    // Validation
+    if (id.trim().isEmpty) {
+      throw ApiClient.toApiException(Exception('File ID is required'));
+    }
+
     try {
       final response = await _dio.put('/files/$id', data: {'folderId': folderId});
-      return CloudFile.fromJson(response.data['data']['file'] as Map<String, dynamic>);
+      return CloudFile.fromJson(
+          response.data['data']['file'] as Map<String, dynamic>);
     } catch (e) {
       throw ApiClient.toApiException(e);
     }
   }
 
   Future<void> deleteFile(String id) async {
+    // Validation
+    if (id.trim().isEmpty) {
+      throw ApiClient.toApiException(Exception('File ID is required'));
+    }
+
     try {
       await _dio.delete('/files/$id');
     } catch (e) {

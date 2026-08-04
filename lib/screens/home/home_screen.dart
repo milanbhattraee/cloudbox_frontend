@@ -17,6 +17,7 @@ import '../../widgets/loading_view.dart';
 import '../../widgets/prompt_dialog.dart';
 import '../preview/image_preview_screen.dart';
 import '../profile/profile_screen.dart';
+import '../sync/sync_settings_screen.dart';
 import 'folder_picker_screen.dart';
 import 'widgets/category_filter_row.dart';
 import 'widgets/file_tile.dart';
@@ -58,16 +59,21 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<bool> _onWillPop(BrowserProvider browser) async {
+    // Handle search mode
     if (_isSearching) {
       setState(() => _isSearching = false);
       _searchController.clear();
-      browser.setSearch(null);
+      await browser.setSearch(null);
       return false;
     }
+    
+    // Handle breadcrumb navigation
     if (!browser.isAtRoot) {
-      browser.goUp();
+      await browser.goUp();
       return false;
     }
+    
+    // At root - allow exit
     return true;
   }
 
@@ -79,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvoked: (didPop) async {
+      onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         final shouldPop = await _onWillPop(browser);
         if (shouldPop && context.mounted) {
@@ -88,6 +94,13 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
+          leading: browser.isAtRoot
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.arrow_back_rounded),
+                  onPressed: () => browser.goUp(),
+                  tooltip: 'Go back',
+                ),
           title: _isSearching
               ? TextField(
                   controller: _searchController,
@@ -97,6 +110,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: InputBorder.none,
                   ),
                   onSubmitted: (value) => browser.setSearch(value),
+                  onChanged: (value) {
+                    // Live search as user types
+                    if (value.isEmpty) {
+                      browser.setSearch(null);
+                    }
+                  },
                 )
               : Text(browser.currentFolderName),
           actions: [
@@ -123,8 +142,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               onSelected: (value) async {
                 if (value == 'profile') {
-                  Navigator.of(context).push(
+                  await Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                  );
+                } else if (value == 'sync') {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const SyncSettingsScreen()),
                   );
                 } else if (value == 'logout') {
                   final confirmed = await showConfirmDialog(
@@ -133,7 +157,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     message: 'You can sign back in any time.',
                     confirmLabel: 'Sign out',
                   );
-                  if (confirmed) await context.read<AuthProvider>().signOut();
+                  if (confirmed) {
+                    if (!context.mounted) return;
+                    await context.read<AuthProvider>().signOut();
+                  }
                 }
               },
               itemBuilder: (context) => [
@@ -146,6 +173,15 @@ class _HomeScreenState extends State<HomeScreen> {
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
+                const PopupMenuItem(
+                  value: 'sync',
+                  child: ListTile(
+                    leading: Icon(Icons.sync_rounded),
+                    title: Text('Auto-Sync'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const PopupMenuDivider(),
                 const PopupMenuItem(
                   value: 'logout',
                   child: ListTile(
@@ -332,8 +368,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (newName != null && newName.isNotEmpty && context.mounted) {
                   final ok = await browser.renameFolder(folder, newName);
-                  if (!ok && context.mounted)
+                  if (!ok && context.mounted) {
                     _showError(context, browser.errorMessage);
+                  }
                 }
               },
             ),
@@ -351,8 +388,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (destination != null && context.mounted) {
                   final ok = await browser.moveFolder(
                       folder, destination == 'root' ? null : destination);
-                  if (!ok && context.mounted)
+                  if (!ok && context.mounted) {
                     _showError(context, browser.errorMessage);
+                  }
                 }
               },
             ),
@@ -375,8 +413,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (confirmed && context.mounted) {
                   final ok = await browser.deleteFolder(folder);
-                  if (!ok && context.mounted)
+                  if (!ok && context.mounted) {
                     _showError(context, browser.errorMessage);
+                  }
                 }
               },
             ),
@@ -499,8 +538,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 if (name != null && name.isNotEmpty && context.mounted) {
                   final ok = await browser.createFolder(name);
-                  if (!ok && context.mounted)
+                  if (!ok && context.mounted) {
                     _showError(context, browser.errorMessage);
+                  }
                 }
               },
             ),

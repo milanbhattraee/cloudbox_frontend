@@ -9,6 +9,8 @@ import 'providers/upload_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/connectivity_service.dart';
+import 'widgets/server_down_screen.dart';
 
 class CloudBoxApp extends StatelessWidget {
   const CloudBoxApp({super.key});
@@ -17,6 +19,9 @@ class CloudBoxApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider.value(
+          value: ConnectivityService.instance,
+        ),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BrowserProvider()),
         ChangeNotifierProvider(create: (_) => UploadProvider()),
@@ -27,9 +32,33 @@ class CloudBoxApp extends StatelessWidget {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
-        home: const _AuthGate(),
+        home: const _ConnectivityGate(),
       ),
     );
+  }
+}
+
+/// First checks connectivity, then swaps between splash / login / home
+class _ConnectivityGate extends StatelessWidget {
+  const _ConnectivityGate();
+
+  @override
+  Widget build(BuildContext context) {
+    final connectivity = context.watch<ConnectivityService>();
+
+    // Show server down screen if offline or server unavailable
+    if (connectivity.status == ConnectivityStatus.offline ||
+        connectivity.status == ConnectivityStatus.serverDown) {
+      return const ServerDownScreen();
+    }
+
+    // If still checking connectivity, show splash
+    if (connectivity.status == ConnectivityStatus.checking) {
+      return const SplashScreen();
+    }
+
+    // Online - proceed to auth gate
+    return const _AuthGate();
   }
 }
 
