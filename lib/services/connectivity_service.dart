@@ -35,7 +35,7 @@ class ConnectivityService extends ChangeNotifier {
   Future<bool> _hasInternetConnection() async {
     try {
       final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 3));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
     } catch (_) {
       return false;
@@ -49,11 +49,11 @@ class ConnectivityService extends ChangeNotifier {
           .get(
             '/health',
             options: Options(
-              sendTimeout: const Duration(seconds: 5),
-              receiveTimeout: const Duration(seconds: 5),
+              sendTimeout: const Duration(seconds: 3),
+              receiveTimeout: const Duration(seconds: 3),
             ),
           )
-          .timeout(const Duration(seconds: 6));
+          .timeout(const Duration(seconds: 4));
 
       return response.statusCode == 200 &&
           response.data != null &&
@@ -103,14 +103,14 @@ class ConnectivityService extends ChangeNotifier {
     }
   }
 
-  /// Starts periodic health checks (every 30 seconds when app is active)
+  /// Starts periodic health checks (every 60 seconds when app is active)
   void _startPeriodicHealthCheck() {
     _healthCheckTimer?.cancel();
     // Initial check
     updateStatus();
-    // Periodic checks
+    // Periodic checks - reduced frequency to save battery and network
     _healthCheckTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 60),
       (_) => updateStatus(),
     );
   }

@@ -17,6 +17,7 @@ dependencies:
 
   # Networking
   dio: ^5.5.0
+  cached_network_image: ^3.4.1
 
   # State management
   provider: ^6.1.2

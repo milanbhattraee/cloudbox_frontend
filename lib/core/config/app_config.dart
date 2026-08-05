@@ -12,13 +12,15 @@ class AppConfig {
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:8080/api',
+    // Use your computer's local IP for physical devices
+    // 192.168.1.66 = your computer's IP on the local network
+    defaultValue: 'http://192.168.1.66:8080/api',
   );
 
-  static const Duration connectTimeout = Duration(seconds: 15);
-  static const Duration receiveTimeout = Duration(seconds: 30);
+  static const Duration connectTimeout = Duration(seconds: 10);
+  static const Duration receiveTimeout = Duration(seconds: 20);
   // Uploads/downloads can legitimately take a while for large files.
-  static const Duration sendTimeout = Duration(minutes: 5);
+  static const Duration sendTimeout = Duration(minutes: 3);
 
   static const int defaultPageSize = 30;
 }

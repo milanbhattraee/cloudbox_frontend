@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/byte_formatter.dart';
@@ -19,17 +20,60 @@ class FileTile extends StatelessWidget {
     required this.onAction,
   });
 
+  Widget _buildLeading(BuildContext context) {
+    final category = file.category;
+    
+    // Show image preview for image files
+    if (file.isImage && file.path.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: CachedNetworkImage(
+          imageUrl: file.path,
+          width: 56,
+          height: 56,
+          fit: BoxFit.cover,
+          placeholder: (context, url) => Container(
+            width: 56,
+            height: 56,
+            color: category.color.withValues(alpha: 0.15),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: category.color,
+                ),
+              ),
+            ),
+          ),
+          errorWidget: (context, url, error) => Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: category.color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(category.icon, color: category.color),
+          ),
+        ),
+      );
+    }
+    
+    // Show icon for non-image files
+    return CircleAvatar(
+      backgroundColor: category.color.withValues(alpha: 0.15),
+      child: Icon(category.icon, color: category.color),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final category = file.category;
 
     return ListTile(
       onTap: onTap,
-      leading: CircleAvatar(
-        backgroundColor: category.color.withValues(alpha: 0.15),
-        child: Icon(category.icon, color: category.color),
-      ),
+      leading: _buildLeading(context),
       title: Text(
         file.originalName,
         maxLines: 1,
