@@ -19,7 +19,9 @@ class FileService {
   Future<List<CloudFile>> uploadFiles({
     required List<PlatformFile> files,
     String? folderId,
+    Map<String, dynamic>? metadata,
     void Function(int sent, int total)? onProgress,
+    int maxRetries = 3,
   }) async {
     // Validation
     if (files.isEmpty) {
@@ -43,61 +45,97 @@ class FileService {
       }
     }
 
-    try {
-      final formData = FormData();
-      if (folderId != null && folderId.isNotEmpty) {
-        formData.fields.add(MapEntry('folderId', folderId));
-      }
+    int attempt = 0;
+    Exception? lastError;
+
+    while (attempt < maxRetries) {
+      attempt++;
       
-      int totalFilesAdded = 0;
-      for (final f in files) {
-        final bytes = f.bytes;
-        if (bytes == null || bytes.isEmpty) {
-          debugPrint('[FileService] Skipping ${f.name} - no bytes available');
-          continue;
+      try {
+        final formData = FormData();
+        if (folderId != null && folderId.isNotEmpty) {
+          formData.fields.add(MapEntry('folderId', folderId));
         }
-        formData.files.add(
-          MapEntry(
-            'files',
-            MultipartFile.fromBytes(bytes, filename: f.name),
+        
+        // Add sync metadata if provided
+        if (metadata != null) {
+          metadata.forEach((key, value) {
+            if (value != null) {
+              formData.fields.add(MapEntry(key, value.toString()));
+            }
+          });
+        }
+        
+        int totalFilesAdded = 0;
+        for (final f in files) {
+          final bytes = f.bytes;
+          if (bytes == null || bytes.isEmpty) {
+            debugPrint('[FileService] Skipping ${f.name} - no bytes available');
+            continue;
+          }
+          formData.files.add(
+            MapEntry(
+              'files',
+              MultipartFile.fromBytes(bytes, filename: f.name),
+            ),
+          );
+          totalFilesAdded++;
+        }
+
+        if (totalFilesAdded == 0) {
+          throw ApiClient.toApiException(
+            Exception('No valid files to upload'),
+          );
+        }
+
+        debugPrint('[FileService] Uploading $totalFilesAdded file(s), attempt $attempt/$maxRetries');
+
+        final response = await _dio.post(
+          '/files/upload',
+          data: formData,
+          onSendProgress: onProgress,
+          options: Options(
+            sendTimeout: const Duration(minutes: 5), // Allow time for large files
+            receiveTimeout: const Duration(minutes: 5),
           ),
         );
-        totalFilesAdded++;
+        
+        if (response.data?['data']?['files'] == null) {
+          throw ApiClient.toApiException(
+            Exception('Invalid server response: missing files data'),
+          );
+        }
+
+        final list = response.data['data']['files'] as List<dynamic>;
+        debugPrint('[FileService] Successfully uploaded ${list.length} file(s)');
+        
+        return list
+            .map((e) => CloudFile.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
+        lastError = e as Exception;
+        debugPrint('[FileService] Upload attempt $attempt failed: $e');
+        
+        // Don't retry on client errors (400-499)
+        if (e is DioException && 
+            e.response?.statusCode != null && 
+            e.response!.statusCode! >= 400 && 
+            e.response!.statusCode! < 500) {
+          debugPrint('[FileService] Client error, not retrying');
+          throw ApiClient.toApiException(e);
+        }
+        
+        // Wait before retry (exponential backoff)
+        if (attempt < maxRetries) {
+          final delayMs = 1000 * attempt; // 1s, 2s, 3s
+          debugPrint('[FileService] Retrying in ${delayMs}ms...');
+          await Future.delayed(Duration(milliseconds: delayMs));
+        }
       }
-
-      if (totalFilesAdded == 0) {
-        throw ApiClient.toApiException(
-          Exception('No valid files to upload'),
-        );
-      }
-
-      debugPrint('[FileService] Uploading $totalFilesAdded file(s)...');
-
-      final response = await _dio.post(
-        '/files/upload',
-        data: formData,
-        onSendProgress: onProgress,
-        options: Options(
-          sendTimeout: const Duration(minutes: 5), // Allow time for large files
-        ),
-      );
-      
-      if (response.data?['data']?['files'] == null) {
-        throw ApiClient.toApiException(
-          Exception('Invalid server response: missing files data'),
-        );
-      }
-
-      final list = response.data['data']['files'] as List<dynamic>;
-      debugPrint('[FileService] Successfully uploaded ${list.length} file(s)');
-      
-      return list
-          .map((e) => CloudFile.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      debugPrint('[FileService] Upload error: $e');
-      throw ApiClient.toApiException(e);
     }
+    
+    debugPrint('[FileService] All upload attempts failed');
+    throw ApiClient.toApiException(lastError ?? Exception('Upload failed after $maxRetries attempts'));
   }
 
   /// [folderId] null/omitted lists the root folder's files; pass 'root'

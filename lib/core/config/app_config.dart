@@ -13,7 +13,7 @@ class AppConfig {
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     // Use your computer's local IP for physical devices
-    // 192.168.1.66 = your computer's IP on the local network
+    // 192.168.1.126 = your computer's IP on the local network
     defaultValue: 'http://192.168.1.66:8080/api',
   );
 

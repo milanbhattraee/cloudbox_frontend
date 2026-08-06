@@ -48,11 +48,19 @@ class UploadProvider extends ChangeNotifier {
         files: pickedFiles,
         folderId: folderId,
         onProgress: (sent, total) {
-          progress = total == 0 ? 0 : sent / total;
-          notifyListeners();
+          if (total > 0) {
+            final newProgress = sent / total;
+            // Only notify if progress changed significantly (>1% change) or reached 100%
+            if ((newProgress - progress).abs() > 0.01 || newProgress >= 1.0) {
+              progress = newProgress;
+              debugPrint('[Upload] Progress: ${(progress * 100).toStringAsFixed(1)}%');
+              notifyListeners();
+            }
+          }
         },
       );
       status = UploadStatus.success;
+      progress = 1.0;
       notifyListeners();
       return uploaded;
     } catch (e) {
@@ -62,7 +70,7 @@ class UploadProvider extends ChangeNotifier {
       return null;
     } finally {
       // Let the UI show the final state briefly, then reset.
-      Future.delayed(const Duration(seconds: 2), () {
+      Future.delayed(const Duration(seconds: 3), () {
         if (status != UploadStatus.uploading) {
           status = UploadStatus.idle;
           currentBatchLabel = null;

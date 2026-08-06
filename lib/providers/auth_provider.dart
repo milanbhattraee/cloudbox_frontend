@@ -38,6 +38,7 @@ class AuthProvider extends ChangeNotifier {
     // A Firebase user exists locally; sync/create the matching backend
     // User row and pull their profile (storage quota, etc.) before we
     // consider the session fully "authenticated".
+    debugPrint('[AuthProvider] Firebase user signed in, syncing with backend...');
     status = AuthStatus.unknown;
     errorMessage = null;
     notifyListeners();
@@ -47,11 +48,13 @@ class AuthProvider extends ChangeNotifier {
       if (version != _authStateVersion) return;
       currentUser = synced;
       status = AuthStatus.authenticated;
+      debugPrint('[AuthProvider] Successfully authenticated!');
     } catch (e) {
       if (version != _authStateVersion) return;
       currentUser = null;
       errorMessage = (e is ApiException ? e.displayMessage : e.toString());
       status = AuthStatus.unauthenticated;
+      debugPrint('[AuthProvider] Backend sync failed: $errorMessage');
     }
 
     if (version == _authStateVersion) {

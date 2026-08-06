@@ -10,11 +10,13 @@ import '../../providers/auth_provider.dart';
 import '../../providers/browser_provider.dart';
 import '../../providers/upload_provider.dart';
 import '../../services/file_service.dart';
+import '../../services/smart_sync_service.dart';
 import '../../widgets/confirm_dialog.dart';
 import '../../widgets/empty_state.dart';
 import '../../widgets/error_state.dart';
 import '../../widgets/loading_view.dart';
 import '../../widgets/prompt_dialog.dart';
+import '../../widgets/sync_status_widget.dart';
 import '../preview/image_preview_screen.dart';
 import '../profile/profile_screen.dart';
 import '../sync/sync_settings_screen.dart';
@@ -41,6 +43,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     unawaited(context.read<BrowserProvider>().startFreshSession());
+    // Initialize sync service
+    unawaited(context.read<SmartSyncService>().initialize());
     _scrollController.addListener(_onScroll);
   }
 
@@ -199,6 +203,8 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             if (auth.currentUser != null)
               StorageUsageBar(user: auth.currentUser!),
+            // Sync status widget
+            if (browser.isAtRoot) const SyncStatusWidget(),
             if (!browser.isAtRoot || browser.breadcrumbNames.length > 1)
               _buildBreadcrumbs(browser),
             const SizedBox(height: 4),
@@ -375,26 +381,6 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.drive_file_move_outline),
-              title: const Text('Move'),
-              onTap: () async {
-                Navigator.pop(sheetContext);
-                final destination = await Navigator.of(context).push<String?>(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        FolderPickerScreen(excludeFolderId: folder.id),
-                  ),
-                );
-                if (destination != null && context.mounted) {
-                  final ok = await browser.moveFolder(
-                      folder, destination == 'root' ? null : destination);
-                  if (!ok && context.mounted) {
-                    _showError(context, browser.errorMessage);
-                  }
-                }
-              },
-            ),
-            ListTile(
               leading: Icon(Icons.delete_outline_rounded,
                   color: Theme.of(context).colorScheme.error),
               title: Text('Delete',
@@ -460,16 +446,6 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         if (newName != null && newName.isNotEmpty && context.mounted) {
           final ok = await browser.renameFile(file, newName);
-          if (!ok && context.mounted) _showError(context, browser.errorMessage);
-        }
-        break;
-      case FileTileAction.move:
-        final destination = await Navigator.of(context).push<String?>(
-          MaterialPageRoute(builder: (_) => const FolderPickerScreen()),
-        );
-        if (destination != null && context.mounted) {
-          final ok = await browser.moveFile(
-              file, destination == 'root' ? null : destination);
           if (!ok && context.mounted) _showError(context, browser.errorMessage);
         }
         break;

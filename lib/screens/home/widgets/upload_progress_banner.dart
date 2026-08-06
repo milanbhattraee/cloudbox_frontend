@@ -14,51 +14,82 @@ class UploadProgressBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final isError = uploadProvider.status == UploadStatus.error;
     final isSuccess = uploadProvider.status == UploadStatus.success;
+    final isUploading = uploadProvider.status == UploadStatus.uploading;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: isError 
+            ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
+            : isSuccess
+                ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+                : theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isError
+              ? theme.colorScheme.error
+              : theme.colorScheme.primary,
+          width: 1,
+        ),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            isError
-                ? Icons.error_outline_rounded
-                : isSuccess
-                    ? Icons.check_circle_outline_rounded
-                    : Icons.cloud_upload_outlined,
-            color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
-            size: 20,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
+          Row(
+            children: [
+              Icon(
+                isError
+                    ? Icons.error_outline_rounded
+                    : isSuccess
+                        ? Icons.check_circle_outline_rounded
+                        : Icons.cloud_upload_outlined,
+                color: isError ? theme.colorScheme.error : theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
                   isError
                       ? (uploadProvider.errorMessage ?? 'Upload failed')
                       : isSuccess
-                          ? 'Uploaded ${uploadProvider.currentBatchLabel ?? ''}'
-                          : 'Uploading ${uploadProvider.currentBatchLabel ?? ''}...',
-                  style: theme.textTheme.bodySmall,
+                          ? 'Upload complete!'
+                          : 'Uploading ${uploadProvider.currentBatchLabel ?? ''}',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isError 
+                        ? theme.colorScheme.error 
+                        : theme.colorScheme.primary,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (uploadProvider.status == UploadStatus.uploading) ...[
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(value: uploadProvider.progress, minHeight: 4),
+              ),
+              if (isUploading)
+                Text(
+                  '${(uploadProvider.progress * 100).toStringAsFixed(0)}%',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
                   ),
-                ],
-              ],
-            ),
+                ),
+            ],
           ),
+          if (isUploading) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: uploadProvider.progress,
+                minHeight: 6,
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  theme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

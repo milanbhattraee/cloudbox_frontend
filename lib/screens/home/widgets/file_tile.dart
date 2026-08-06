@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/utils/byte_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/utils/image_cache_manager.dart';
 import '../../../models/cloud_file.dart';
 import '../../../models/file_category.dart';
 
-enum FileTileAction { open, download, rename, move, delete }
+enum FileTileAction { open, download, rename, delete }
 
 class FileTile extends StatelessWidget {
   final CloudFile file;
@@ -29,9 +30,14 @@ class FileTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: CachedNetworkImage(
           imageUrl: file.path,
+          cacheManager: CloudBoxCacheManager.instance,
           width: 56,
           height: 56,
           fit: BoxFit.cover,
+          memCacheWidth: 168, // 3x for high DPI screens
+          memCacheHeight: 168,
+          maxWidthDiskCache: 300, // Limit disk cache size
+          maxHeightDiskCache: 300,
           placeholder: (context, url) => Container(
             width: 56,
             height: 56,
@@ -100,14 +106,6 @@ class FileTile extends StatelessWidget {
             child: ListTile(
               leading: Icon(Icons.edit_rounded),
               title: Text('Rename'),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ),
-          const PopupMenuItem(
-            value: FileTileAction.move,
-            child: ListTile(
-              leading: Icon(Icons.drive_file_move_rounded),
-              title: Text('Move'),
               contentPadding: EdgeInsets.zero,
             ),
           ),

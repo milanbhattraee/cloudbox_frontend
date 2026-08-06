@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../core/network/api_client.dart';
@@ -144,16 +145,23 @@ class AuthService {
         throw ApiException(message: 'No authenticated Firebase user found.');
       }
 
+      debugPrint('[AuthService] syncWithBackend: Getting Firebase token...');
       // Force token refresh to ensure it's valid
-      await user.getIdToken(true);
+      final token = await user.getIdToken(true);
+      debugPrint('[AuthService] syncWithBackend: Got token, calling backend at ${ApiClient.instance.dio.options.baseUrl}/auth/login');
       
       final response = await ApiClient.instance.dio.post(
         '/auth/login',
         options: Options(
-          sendTimeout: const Duration(seconds: 15),
-          receiveTimeout: const Duration(seconds: 15),
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
         ),
       );
+      
+      debugPrint('[AuthService] syncWithBackend: Backend responded with status ${response.statusCode}');
       
       if (response.data?['data']?['user'] == null) {
         throw ApiException(
@@ -162,8 +170,11 @@ class AuthService {
       }
       
       final data = response.data['data']['user'] as Map<String, dynamic>;
+      debugPrint('[AuthService] syncWithBackend: Successfully synced user');
       return AppUser.fromJson(data);
     } catch (e) {
+      debugPrint('[AuthService] syncWithBackend ERROR: $e');
+      debugPrint('[AuthService] Backend URL: ${ApiClient.instance.dio.options.baseUrl}');
       throw ApiClient.toApiException(e);
     }
   }

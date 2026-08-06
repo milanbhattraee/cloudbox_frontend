@@ -10,6 +10,7 @@ import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/connectivity_service.dart';
+import 'services/smart_sync_service.dart';
 import 'widgets/server_down_screen.dart';
 
 class CloudBoxApp extends StatelessWidget {
@@ -22,6 +23,9 @@ class CloudBoxApp extends StatelessWidget {
         ChangeNotifierProvider.value(
           value: ConnectivityService.instance,
         ),
+        ChangeNotifierProvider.value(
+          value: SmartSyncService.instance,
+        ),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => BrowserProvider()),
         ChangeNotifierProvider(create: (_) => UploadProvider()),
@@ -33,31 +37,31 @@ class CloudBoxApp extends StatelessWidget {
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
         home: const _ConnectivityGate(),
+        // Performance optimizations
+        builder: (context, child) {
+          // Prevent font scaling from affecting layout
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(
+                MediaQuery.of(context).textScaleFactor.clamp(0.8, 1.2),
+              ),
+            ),
+            child: child!,
+          );
+        },
       ),
     );
   }
 }
 
-/// First checks connectivity, then swaps between splash / login / home
+/// First checks authentication, connectivity is checked only when needed
 class _ConnectivityGate extends StatelessWidget {
   const _ConnectivityGate();
 
   @override
   Widget build(BuildContext context) {
-    final connectivity = context.watch<ConnectivityService>();
-
-    // Show server down screen if offline or server unavailable
-    if (connectivity.status == ConnectivityStatus.offline ||
-        connectivity.status == ConnectivityStatus.serverDown) {
-      return const ServerDownScreen();
-    }
-
-    // If still checking connectivity, show splash
-    if (connectivity.status == ConnectivityStatus.checking) {
-      return const SplashScreen();
-    }
-
-    // Online - proceed to auth gate
+    // App works offline - no need to block based on connectivity
+    // Connectivity is only checked when syncing
     return const _AuthGate();
   }
 }
@@ -69,6 +73,26 @@ class _AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+
+    // Show error snackbar if backend sync failed
+    if (auth.status == AuthStatus.unauthenticated && auth.errorMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Backend Error: ${auth.errorMessage}'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
+            ),
+          );
+        }
+      });
+    }
 
     switch (auth.status) {
       case AuthStatus.unknown:

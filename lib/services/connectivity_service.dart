@@ -14,13 +14,11 @@ enum ConnectivityStatus {
 }
 
 class ConnectivityService extends ChangeNotifier {
-  ConnectivityService._internal() {
-    _startPeriodicHealthCheck();
-  }
+  ConnectivityService._internal();
 
   static final ConnectivityService instance = ConnectivityService._internal();
 
-  ConnectivityStatus _status = ConnectivityStatus.checking;
+  ConnectivityStatus _status = ConnectivityStatus.offline; // Default to offline
   DateTime? _lastSuccessfulCheck;
   Timer? _healthCheckTimer;
   int _consecutiveFailures = 0;
@@ -35,9 +33,10 @@ class ConnectivityService extends ChangeNotifier {
   Future<bool> _hasInternetConnection() async {
     try {
       final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(seconds: 3));
+          .timeout(const Duration(seconds: 2));
       return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[ConnectivityService] Internet check failed: $e');
       return false;
     }
   }
@@ -49,16 +48,20 @@ class ConnectivityService extends ChangeNotifier {
           .get(
             '/health',
             options: Options(
-              sendTimeout: const Duration(seconds: 3),
-              receiveTimeout: const Duration(seconds: 3),
+              sendTimeout: const Duration(seconds: 5),
+              receiveTimeout: const Duration(seconds: 5),
             ),
           )
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 6));
 
-      return response.statusCode == 200 &&
+      final isHealthy = response.statusCode == 200 &&
           response.data != null &&
           response.data['success'] == true;
-    } catch (_) {
+      
+      debugPrint('[ConnectivityService] Server health check: $isHealthy');
+      return isHealthy;
+    } catch (e) {
+      debugPrint('[ConnectivityService] Server health check failed: $e');
       return false;
     }
   }
@@ -94,25 +97,45 @@ class ConnectivityService extends ChangeNotifier {
     _status = ConnectivityStatus.checking;
     if (oldStatus != _status) notifyListeners();
 
-    final newStatus = await checkConnectivity();
-    _status = newStatus;
+    try {
+      final newStatus = await checkConnectivity().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('[ConnectivityService] Check timed out, assuming offline');
+          return ConnectivityStatus.offline;
+        },
+      );
+      
+      _status = newStatus;
 
-    if (oldStatus != _status) {
-      debugPrint('[ConnectivityService] Status changed: $oldStatus -> $newStatus');
+      if (oldStatus != _status) {
+        debugPrint('[ConnectivityService] Status changed: $oldStatus -> $newStatus');
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[ConnectivityService] Error updating status: $e');
+      _status = ConnectivityStatus.offline;
       notifyListeners();
     }
   }
 
-  /// Starts periodic health checks (every 60 seconds when app is active)
-  void _startPeriodicHealthCheck() {
+  /// Starts periodic health checks (every 5 minutes when app is active)
+  /// Only call this if you need continuous monitoring
+  void startPeriodicHealthCheck() {
     _healthCheckTimer?.cancel();
     // Initial check
     updateStatus();
-    // Periodic checks - reduced frequency to save battery and network
+    // Periodic checks - every 5 minutes to reduce load
     _healthCheckTimer = Timer.periodic(
-      const Duration(seconds: 60),
+      const Duration(minutes: 5),
       (_) => updateStatus(),
     );
+  }
+  
+  /// Stop periodic health checks
+  void stopPeriodicHealthCheck() {
+    _healthCheckTimer?.cancel();
+    _healthCheckTimer = null;
   }
 
   /// Force an immediate connectivity check
