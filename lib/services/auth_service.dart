@@ -1,24 +1,48 @@
 import 'package:dio/dio.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/network/api_client.dart';
 import '../core/network/api_exception.dart';
 import '../models/app_user.dart';
 
 class AuthService {
-  FirebaseAuth get _firebaseAuth => FirebaseAuth.instance;
+  static const String _tokenKey = 'auth_token';
+  static const String _userIdKey = 'user_id';
 
-  Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
-  User? get firebaseUser => _firebaseAuth.currentUser;
+  String? _authToken;
+  String? _userId;
 
-  Future<void> registerWithEmail({
+  /// Get current auth token
+  String? get authToken => _authToken;
+
+  /// Check if user is authenticated
+  bool get isAuthenticated => _authToken != null && _userId != null;
+
+  /// Initialize auth service by loading stored token
+  Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _authToken = prefs.getString(_tokenKey);
+      _userId = prefs.getString(_userIdKey);
+      
+      if (_authToken != null) {
+        debugPrint('[AuthService] Loaded existing token');
+        // Set token in API client
+        ApiClient.instance.setAuthToken(_authToken!);
+      }
+    } catch (e) {
+      debugPrint('[AuthService] Failed to load token: $e');
+    }
+  }
+
+  /// Register new user with email and password
+  Future<AppUser> registerWithEmail({
     required String email,
     required String password,
     String? displayName,
   }) async {
-    // Additional validation
+    // Validation
     final trimmedEmail = email.trim();
     if (trimmedEmail.isEmpty) {
       throw ApiException(message: 'Email is required');
@@ -28,21 +52,42 @@ class AuthService {
     }
 
     try {
-      final credential = await _firebaseAuth.createUserWithEmailAndPassword(
-        email: trimmedEmail,
-        password: password,
+      debugPrint('[AuthService] Registering user: $trimmedEmail');
+      
+      final response = await ApiClient.instance.dio.post(
+        '/auth/register',
+        data: {
+          'email': trimmedEmail,
+          'password': password,
+          'fullName': displayName?.trim(),
+        },
       );
-      if (displayName != null && displayName.trim().isNotEmpty) {
-        await credential.user?.updateDisplayName(displayName.trim());
-        await credential.user?.reload();
+
+      if (response.data?['data']?['user'] == null || 
+          response.data?['data']?['token'] == null) {
+        throw ApiException(message: 'Invalid server response during registration');
       }
-    } on FirebaseAuthException catch (e) {
-      throw _mapFirebaseError(e);
+
+      // Save token and user ID
+      final token = response.data['data']['token'] as String;
+      final userData = response.data['data']['user'] as Map<String, dynamic>;
+      final user = AppUser.fromJson(userData);
+
+      await _saveAuthData(token, user.id);
+      
+      debugPrint('[AuthService] Registration successful');
+      return user;
+    } catch (e) {
+      debugPrint('[AuthService] Registration error: $e');
+      throw ApiClient.toApiException(e);
     }
   }
 
-  Future<void> signInWithEmail(
-      {required String email, required String password}) async {
+  /// Sign in with email and password
+  Future<AppUser> signInWithEmail({
+    required String email,
+    required String password,
+  }) async {
     // Validation
     final trimmedEmail = email.trim();
     if (trimmedEmail.isEmpty) {
@@ -53,13 +98,44 @@ class AuthService {
     }
 
     try {
-      await _firebaseAuth.signInWithEmailAndPassword(
-          email: trimmedEmail, password: password);
-    } on FirebaseAuthException catch (e) {
-      throw _mapFirebaseError(e);
+      debugPrint('[AuthService] Signing in: $trimmedEmail');
+      debugPrint('[AuthService] Backend URL: ${ApiClient.instance.dio.options.baseUrl}');
+      
+      final response = await ApiClient.instance.dio.post(
+        '/auth/login',
+        data: {
+          'email': trimmedEmail,
+          'password': password,
+        },
+        options: Options(
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
+
+      debugPrint('[AuthService] Login response status: ${response.statusCode}');
+
+      if (response.data?['data']?['user'] == null || 
+          response.data?['data']?['token'] == null) {
+        throw ApiException(message: 'Invalid server response during login');
+      }
+
+      // Save token and user ID
+      final token = response.data['data']['token'] as String;
+      final userData = response.data['data']['user'] as Map<String, dynamic>;
+      final user = AppUser.fromJson(userData);
+
+      await _saveAuthData(token, user.id);
+      
+      debugPrint('[AuthService] Login successful');
+      return user;
+    } catch (e) {
+      debugPrint('[AuthService] Login error: $e');
+      throw ApiClient.toApiException(e);
     }
   }
 
+  /// Send password reset email
   Future<void> sendPasswordReset(String email) async {
     final trimmedEmail = email.trim();
     if (trimmedEmail.isEmpty) {
@@ -67,116 +143,32 @@ class AuthService {
     }
 
     try {
-      await _firebaseAuth.sendPasswordResetEmail(email: trimmedEmail);
-    } on FirebaseAuthException catch (e) {
-      throw _mapFirebaseError(e);
-    }
-  }
-
-  Future<void> signInWithGoogle() async {
-    try {
-      // Configure GoogleSignIn with proper scopes
-      final googleSignIn = GoogleSignIn(
-        scopes: [
-          'email',
-          'profile',
-        ],
-      );
-
-      // Sign out first to ensure account picker shows
-      await googleSignIn.signOut();
+      debugPrint('[AuthService] Requesting password reset for: $trimmedEmail');
       
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) {
-        throw ApiException(message: 'Google sign-in cancelled.');
-      }
-
-      final googleAuth = await googleUser.authentication;
-      
-      // Verify we have the required tokens
-      if (googleAuth.accessToken == null || googleAuth.idToken == null) {
-        throw ApiException(
-          message: 'Failed to get authentication tokens from Google.',
-        );
-      }
-
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
+      await ApiClient.instance.dio.post(
+        '/auth/forgot-password',
+        data: {'email': trimmedEmail},
       );
-
-      await _firebaseAuth.signInWithCredential(credential);
-    } on FirebaseAuthException catch (e) {
-      throw _mapFirebaseError(e);
-    } on ApiException {
-      rethrow;
+      
+      debugPrint('[AuthService] Password reset email sent');
     } catch (e) {
-      throw ApiException(
-        message: 'Google sign-in failed: ${e.toString()}',
-      );
-    }
-  }
-
-  Future<void> registerWithGoogle() async {
-    // For Google auth, register and sign-in are the same flow
-    // Firebase automatically creates a new user on first sign-in
-    await signInWithGoogle();
-  }
-
-  Future<void> signOut() async {
-    // Sign out from both Firebase and Google
-    try {
-      final googleSignIn = GoogleSignIn();
-      await googleSignIn.signOut();
-    } catch (_) {
-      // Ignore Google sign-out errors as user might not have signed in with Google
-    }
-    await _firebaseAuth.signOut();
-  }
-
-  /// POST /auth/login — verifies the current Firebase ID token server-side
-  /// and creates/refreshes the matching local User row. Must be called
-  /// right after every successful Firebase sign-in/sign-up, since every
-  /// other endpoint requires the local User row to already exist.
-  Future<AppUser> syncWithBackend() async {
-    try {
-      final user = _firebaseAuth.currentUser;
-      if (user == null) {
-        throw ApiException(message: 'No authenticated Firebase user found.');
-      }
-
-      debugPrint('[AuthService] syncWithBackend: Getting Firebase token...');
-      // Force token refresh to ensure it's valid
-      final token = await user.getIdToken(true);
-      debugPrint('[AuthService] syncWithBackend: Got token, calling backend at ${ApiClient.instance.dio.options.baseUrl}/auth/login');
-      
-      final response = await ApiClient.instance.dio.post(
-        '/auth/login',
-        options: Options(
-          sendTimeout: const Duration(seconds: 30),
-          receiveTimeout: const Duration(seconds: 30),
-          headers: {
-            'Authorization': 'Bearer $token',
-          },
-        ),
-      );
-      
-      debugPrint('[AuthService] syncWithBackend: Backend responded with status ${response.statusCode}');
-      
-      if (response.data?['data']?['user'] == null) {
-        throw ApiException(
-          message: 'Invalid server response during login sync',
-        );
-      }
-      
-      final data = response.data['data']['user'] as Map<String, dynamic>;
-      debugPrint('[AuthService] syncWithBackend: Successfully synced user');
-      return AppUser.fromJson(data);
-    } catch (e) {
-      debugPrint('[AuthService] syncWithBackend ERROR: $e');
-      debugPrint('[AuthService] Backend URL: ${ApiClient.instance.dio.options.baseUrl}');
+      debugPrint('[AuthService] Password reset error: $e');
       throw ApiClient.toApiException(e);
     }
+  }
+
+  /// Sign out
+  Future<void> signOut() async {
+    try {
+      // Notify backend
+      await notifyBackendLogout();
+    } catch (e) {
+      debugPrint('[AuthService] Logout notification failed: $e');
+    }
+
+    // Clear local auth data
+    await _clearAuthData();
+    debugPrint('[AuthService] Signed out');
   }
 
   /// GET /auth/profile
@@ -195,28 +187,50 @@ class AuthService {
     }
   }
 
-  /// POST /auth/logout — best-effort; local sign-out happens regardless.
+  /// POST /auth/logout
   Future<void> notifyBackendLogout() async {
     try {
       await ApiClient.instance.dio.post('/auth/logout');
     } catch (_) {
-      // Non-fatal: the token will simply stop being sent after signOut().
+      // Non-fatal: local sign-out happens regardless
     }
   }
 
-  ApiException _mapFirebaseError(FirebaseAuthException e) {
-    final message = switch (e.code) {
-      'invalid-email' => 'That email address looks invalid.',
-      'user-disabled' => 'This account has been disabled.',
-      'user-not-found' => 'No account found with that email.',
-      'wrong-password' => 'Incorrect password.',
-      'invalid-credential' => 'Incorrect email or password.',
-      'email-already-in-use' => 'An account already exists with that email.',
-      'weak-password' => 'Choose a stronger password (at least 6 characters).',
-      'too-many-requests' => 'Too many attempts. Please wait and try again.',
-      'network-request-failed' => 'Network error. Check your connection.',
-      _ => e.message ?? 'Authentication failed.',
-    };
-    return ApiException(message: message, code: e.code);
+  /// Save authentication data to local storage
+  Future<void> _saveAuthData(String token, String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, token);
+      await prefs.setString(_userIdKey, userId);
+      
+      _authToken = token;
+      _userId = userId;
+      
+      // Set token in API client for future requests
+      ApiClient.instance.setAuthToken(token);
+      
+      debugPrint('[AuthService] Saved auth data');
+    } catch (e) {
+      debugPrint('[AuthService] Failed to save auth data: $e');
+    }
+  }
+
+  /// Clear authentication data from local storage
+  Future<void> _clearAuthData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+      await prefs.remove(_userIdKey);
+      
+      _authToken = null;
+      _userId = null;
+      
+      // Clear token from API client
+      ApiClient.instance.clearAuthToken();
+      
+      debugPrint('[AuthService] Cleared auth data');
+    } catch (e) {
+      debugPrint('[AuthService] Failed to clear auth data: $e');
+    }
   }
 }

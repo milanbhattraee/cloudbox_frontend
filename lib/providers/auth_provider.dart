@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 
 import '../core/network/api_exception.dart';
@@ -11,12 +9,10 @@ enum AuthStatus { unknown, authenticated, unauthenticated }
 class AuthProvider extends ChangeNotifier {
   AuthProvider({AuthService? authService})
       : _authService = authService ?? AuthService() {
-    _authSub = _authService.authStateChanges.listen(_onFirebaseUserChanged);
+    _initialize();
   }
 
   final AuthService _authService;
-  late final StreamSubscription _authSub;
-  int _authStateVersion = 0;
 
   AuthStatus status = AuthStatus.unknown;
   AppUser? currentUser;
@@ -25,75 +21,70 @@ class AuthProvider extends ChangeNotifier {
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
-  Future<void> _onFirebaseUserChanged(dynamic user) async {
-    final version = ++_authStateVersion;
-
-    if (user == null) {
-      currentUser = null;
+  /// Initialize the auth provider by checking for stored credentials
+  Future<void> _initialize() async {
+    await _authService.initialize();
+    
+    if (_authService.isAuthenticated) {
+      // Try to load user profile
+      try {
+        currentUser = await _authService.fetchProfile();
+        status = AuthStatus.authenticated;
+        debugPrint('[AuthProvider] Restored authenticated session');
+      } catch (e) {
+        // Token might be expired, sign out
+        await _authService.signOut();
+        status = AuthStatus.unauthenticated;
+        debugPrint('[AuthProvider] Stored token invalid, signed out');
+      }
+    } else {
       status = AuthStatus.unauthenticated;
-      errorMessage = null;
-      notifyListeners();
-      return;
+      debugPrint('[AuthProvider] No stored credentials');
     }
-    // A Firebase user exists locally; sync/create the matching backend
-    // User row and pull their profile (storage quota, etc.) before we
-    // consider the session fully "authenticated".
-    debugPrint('[AuthProvider] Firebase user signed in, syncing with backend...');
-    status = AuthStatus.unknown;
-    errorMessage = null;
+    
     notifyListeners();
-
-    try {
-      final synced = await _authService.syncWithBackend();
-      if (version != _authStateVersion) return;
-      currentUser = synced;
-      status = AuthStatus.authenticated;
-      debugPrint('[AuthProvider] Successfully authenticated!');
-    } catch (e) {
-      if (version != _authStateVersion) return;
-      currentUser = null;
-      errorMessage = (e is ApiException ? e.displayMessage : e.toString());
-      status = AuthStatus.unauthenticated;
-      debugPrint('[AuthProvider] Backend sync failed: $errorMessage');
-    }
-
-    if (version == _authStateVersion) {
-      notifyListeners();
-    }
   }
 
+  /// Sign in with email and password
   Future<bool> signIn({required String email, required String password}) async {
-    return _run(
-        () => _authService.signInWithEmail(email: email, password: password));
+    return _run(() async {
+      final user = await _authService.signInWithEmail(
+        email: email,
+        password: password,
+      );
+      currentUser = user;
+      status = AuthStatus.authenticated;
+    });
   }
 
+  /// Register new user
   Future<bool> register({
     required String email,
     required String password,
     String? displayName,
   }) async {
-    return _run(() => _authService.registerWithEmail(
-          email: email,
-          password: password,
-          displayName: displayName,
-        ));
+    return _run(() async {
+      final user = await _authService.registerWithEmail(
+        email: email,
+        password: password,
+        displayName: displayName,
+      );
+      currentUser = user;
+      status = AuthStatus.authenticated;
+    });
   }
 
+  /// Send password reset email
   Future<bool> sendPasswordReset(String email) async {
     return _run(() => _authService.sendPasswordReset(email));
   }
 
-  Future<bool> signInWithGoogle() async {
-    return _run(() => _authService.signInWithGoogle());
-  }
-
-  Future<bool> registerWithGoogle() async {
-    return _run(() => _authService.registerWithGoogle());
-  }
-
+  /// Sign out
   Future<void> signOut() async {
-    await _authService.notifyBackendLogout();
     await _authService.signOut();
+    currentUser = null;
+    status = AuthStatus.unauthenticated;
+    notifyListeners();
   }
 
   /// Re-fetches the profile (e.g. after an upload changes storageUsed).
@@ -101,30 +92,28 @@ class AuthProvider extends ChangeNotifier {
     try {
       currentUser = await _authService.fetchProfile();
       notifyListeners();
-    } catch (_) {
-      // Non-fatal — keep showing the last known quota.
+    } catch (e) {
+      debugPrint('[AuthProvider] Failed to refresh profile: $e');
+      // Non-fatal — keep showing the last known data
     }
   }
 
+  /// Helper to run async actions with loading state
   Future<bool> _run(Future<void> Function() action) async {
     isBusy = true;
     errorMessage = null;
     notifyListeners();
+    
     try {
       await action();
       return true;
     } catch (e) {
       errorMessage = (e is ApiException ? e.displayMessage : e.toString());
+      debugPrint('[AuthProvider] Error: $errorMessage');
       return false;
     } finally {
       isBusy = false;
       notifyListeners();
     }
-  }
-
-  @override
-  void dispose() {
-    _authSub.cancel();
-    super.dispose();
   }
 }

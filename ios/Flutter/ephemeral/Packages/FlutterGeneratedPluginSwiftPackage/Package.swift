@@ -16,9 +16,6 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "file_picker", path: "../.packages/file_picker-11.0.3"),
-        .package(name: "firebase_auth", path: "../.packages/firebase_auth-5.7.0"),
-        .package(name: "firebase_core", path: "../.packages/firebase_core-3.15.2"),
-        .package(name: "google_sign_in_ios", path: "../.packages/google_sign_in_ios-5.9.0"),
         .package(name: "permission_handler_apple", path: "../.packages/permission_handler_apple-9.5.0"),
         .package(name: "shared_preferences_foundation", path: "../.packages/shared_preferences_foundation-2.5.6"),
         .package(name: "sqflite_darwin", path: "../.packages/sqflite_darwin-2.4.3+1"),
@@ -29,9 +26,6 @@ let package = Package(
             name: "FlutterGeneratedPluginSwiftPackage",
             dependencies: [
                 .product(name: "file-picker", package: "file_picker"),
-                .product(name: "firebase-auth", package: "firebase_auth"),
-                .product(name: "firebase-core", package: "firebase_core"),
-                .product(name: "google-sign-in-ios", package: "google_sign_in_ios"),
                 .product(name: "permission-handler-apple", package: "permission_handler_apple"),
                 .product(name: "shared-preferences-foundation", package: "shared_preferences_foundation"),
                 .product(name: "sqflite-darwin", package: "sqflite_darwin"),

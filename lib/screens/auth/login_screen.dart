@@ -41,16 +41,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signInWithGoogle() async {
-    final auth = context.read<AuthProvider>();
-    final ok = await auth.signInWithGoogle();
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(auth.errorMessage ?? 'Google sign-in failed')),
-      );
-    }
-  }
-
   Future<void> _forgotPassword() async {
     final email = _emailController.text.trim();
     if (email.isEmpty || Validators.email(email) != null) {
@@ -153,12 +143,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   strokeWidth: 2, color: Colors.white),
                             )
                           : const Text('Sign in'),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: auth.isBusy ? null : _signInWithGoogle,
-                      icon: const Icon(Icons.g_mobiledata_rounded),
-                      label: const Text('Continue with Google'),
                     ),
                     const SizedBox(height: 20),
                     Row(

@@ -14,7 +14,7 @@ class AppConfig {
     'API_BASE_URL',
     // Use your computer's local IP for physical devices
     // 192.168.1.126 = your computer's IP on the local network
-    defaultValue: 'http://192.168.1.66:8080/api',
+    defaultValue: 'http://192.168.3.170:8080/api',
   );
 
   static const Duration connectTimeout = Duration(seconds: 10);

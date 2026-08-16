@@ -44,16 +44,6 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  Future<void> _signUpWithGoogle() async {
-    final auth = context.read<AuthProvider>();
-    final ok = await auth.registerWithGoogle();
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(auth.errorMessage ?? 'Google sign-up failed')),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -139,12 +129,6 @@ class _SignupScreenState extends State<SignupScreen> {
                                   strokeWidth: 2, color: Colors.white),
                             )
                           : const Text('Create account'),
-                    ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: auth.isBusy ? null : _signUpWithGoogle,
-                      icon: const Icon(Icons.g_mobiledata_rounded),
-                      label: const Text('Continue with Google'),
                     ),
                   ],
                 ),

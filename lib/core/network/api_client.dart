@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 import '../config/app_config.dart';
 import 'api_exception.dart';
@@ -7,10 +6,8 @@ import 'api_exception.dart';
 /// Thin wrapper around a configured [Dio] instance shared by every service.
 ///
 /// Responsibilities:
-///  - attach `Authorization: Bearer <Firebase ID token>` to every request
-///  - transparently refresh the token and retry once on a 401
+///  - attach `Authorization: Bearer <token>` to every request
 ///  - convert any failure into an [ApiException] with a friendly message
-///    (see [ApiClient.toApiException], used by every service method)
 class ApiClient {
   ApiClient._internal() {
     _dio = Dio(
@@ -27,32 +24,12 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _currentIdToken();
-          if (token != null) {
-            options.headers['Authorization'] = 'Bearer $token';
+          if (_authToken != null) {
+            options.headers['Authorization'] = 'Bearer $_authToken';
           }
           handler.next(options);
         },
         onError: (error, handler) async {
-          // One retry after a forced token refresh, in case the token
-          // expired between requests (Firebase ID tokens last ~1 hour but
-          // can be invalidated earlier, e.g. after revokeRefreshTokens).
-          final alreadyRetried = error.requestOptions.extra['retried'] == true;
-          if (error.response?.statusCode == 401 && !alreadyRetried) {
-            final refreshed = await _currentIdToken(forceRefresh: true);
-            if (refreshed != null) {
-              final retryOptions = error.requestOptions;
-              retryOptions.extra['retried'] = true;
-              retryOptions.headers['Authorization'] = 'Bearer $refreshed';
-              try {
-                final response = await _dio.fetch(retryOptions);
-                handler.resolve(response);
-                return;
-              } catch (_) {
-                // fall through to normal error handling below
-              }
-            }
-          }
           handler.next(error);
         },
       ),
@@ -61,17 +38,18 @@ class ApiClient {
 
   static final ApiClient instance = ApiClient._internal();
   late final Dio _dio;
+  String? _authToken;
 
   Dio get dio => _dio;
 
-  static Future<String?> _currentIdToken({bool forceRefresh = false}) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
-    try {
-      return await user.getIdToken(forceRefresh);
-    } catch (_) {
-      return null;
-    }
+  /// Set authentication token for API requests
+  void setAuthToken(String token) {
+    _authToken = token;
+  }
+
+  /// Clear authentication token
+  void clearAuthToken() {
+    _authToken = null;
   }
 
   /// Converts any error thrown while awaiting a Dio call into an
